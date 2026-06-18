@@ -875,6 +875,13 @@ def main():
         help="Apply BF16 logits patch (saves VRAM on some models)"
     )
     parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Resume from checkpoint: 'auto' for latest, a step number, or a full path. "
+             "Overrides checkpoint.resume in config."
+    )
+    parser.add_argument(
         "--wandb-project",
         type=str,
         default=None,
@@ -903,6 +910,31 @@ def main():
     # Setup output directory
     output_dir = setup_output_directory(config, postfix=args.postfix)
     print(f"\n[Output] Directory: {output_dir}")
+
+    # Resolve checkpoint to resume from (CLI overrides config)
+    resume_spec = args.resume or config.get("checkpoint", {}).get("resume")
+    checkpoint_path = None
+    if resume_spec:
+        if str(resume_spec).lower() == "auto":
+            checkpoints = sorted(
+                output_dir.glob("checkpoint-*"),
+                key=lambda p: int(p.name.split("-")[-1])
+            )
+            if checkpoints:
+                checkpoint_path = checkpoints[-1]
+                print(f"[Resume] Auto-detected checkpoint: {checkpoint_path}")
+            else:
+                print("[Resume] No checkpoints found, starting fresh")
+        elif str(resume_spec).isdigit():
+            checkpoint_path = output_dir / f"checkpoint-{resume_spec}"
+            if not checkpoint_path.exists():
+                raise ValueError(f"Checkpoint not found: {checkpoint_path}")
+            print(f"[Resume] Resuming from step: {checkpoint_path}")
+        else:
+            checkpoint_path = Path(resume_spec)
+            if not checkpoint_path.exists():
+                raise ValueError(f"Checkpoint not found: {checkpoint_path}")
+            print(f"[Resume] Resuming from: {checkpoint_path}")
 
     # Save config to output directory
     save_config_to_output_dir(config, output_dir)
@@ -1028,7 +1060,7 @@ def main():
     print("STARTING TRAINING")
     print("="*80 + "\n")
 
-    trainer.train()
+    trainer.train(resume_from_checkpoint=str(checkpoint_path) if checkpoint_path else None)
 
     # Save final model
     print("\n" + "="*80)

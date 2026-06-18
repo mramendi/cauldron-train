@@ -65,7 +65,7 @@
     "prewarmup_steps": 50,
     "prewarmup_lr_ratio": 0.1,
     "stable_steps": 200,
-    "num_cycles": 1,
+    "num_cycles": 0.5,
     "epoch_shock_absorber": {
       "enabled": false,
       "steps_per_epoch": null,
