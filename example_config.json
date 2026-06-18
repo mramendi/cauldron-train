@@ -1,0 +1,9 @@
+{
+  "datasets": [
+    {
+      "name": "my_dataset",
+      "path": "path/to/your/data.jsonl",
+      "upsample": 1
+    }
+  ]
+}

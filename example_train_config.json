@@ -1,0 +1,100 @@
+{
+  "name": "granite-h-hybrid-r256",
+  "description": "Granite hybrid model: attention + mamba layers, rank 256",
+
+  "model": {
+    "name": "ibm-granite/granite-4.0-h-1b",
+    "bf16_logits_patch": true
+  },
+
+  "data": {
+    "train_dir": "./prepared_data/train",
+    "eval_dir": "./prepared_data/eval"
+  },
+
+  "lora": {
+    "base_rank": 256,
+    "base_alpha": 512,
+    "dropout": 0.01,
+    "use_rslora": false,
+    "layer_groups": [
+      {
+        "name": "attention",
+        "modules": ["q_proj", "k_proj", "v_proj", "o_proj"],
+        "rank": null,
+        "alpha": null,
+        "enabled": true
+      },
+      {
+        "name": "mamba_in",
+        "modules": ["mamba.in_proj"],
+        "rank": null,
+        "alpha": null,
+        "enabled": true
+      },
+      {
+        "name": "mamba_out",
+        "modules": ["mamba.out_proj"],
+        "rank": 128,
+        "alpha": 256,
+        "enabled": true
+      },
+      {
+        "name": "mlp_full",
+        "modules": ["shared_mlp"],
+        "rank": 64,
+        "alpha": 128,
+        "enabled": false
+      }
+    ],
+    "layer_filter": {
+      "start_layer": null,
+      "end_layer": null
+    }
+  },
+
+  "optimizer": {
+    "type": "adamw",
+    "learning_rate": 2e-5,
+    "weight_decay": 0.01
+  },
+
+  "scheduler": {
+    "type": "wwsd",
+    "warmup_steps": 100,
+    "prewarmup_steps": 50,
+    "prewarmup_lr_ratio": 0.1,
+    "stable_steps": 200,
+    "num_cycles": 1,
+    "epoch_shock_absorber": {
+      "enabled": false,
+      "steps_per_epoch": null,
+      "shock_recovery_steps": 100
+    }
+  },
+
+  "training": {
+    "max_grad_norm": 1.0,
+    "label_smoothing": 0.0,
+    "neftune_noise_alpha": null,
+    "logging_steps": 10,
+    "save_steps": 500,
+    "early_stopping": {
+      "patience": 3,
+      "threshold": 0.0001
+    }
+  },
+
+  "output": {
+    "root_dir": "./results",
+    "prefix": null,
+    "auto_merge": true
+  },
+
+  "checkpoint": {
+    "resume": "auto",
+    "flag_file": null
+  },
+
+  "wandb_project": null
+}

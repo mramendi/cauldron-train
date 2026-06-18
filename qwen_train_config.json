@@ -1,0 +1,76 @@
+{
+  "name": "qwen3.5-2B-r256",
+  "description": "Qwen .5 2B: attention + hybrid layers, rank 256",
+
+  "model": {
+    "name": "Qwen/Qwen3.5-2B"
+  },
+
+  "data": {
+    "train_dir": "./qwen_data_brief2/train",
+    "eval_dir": "./qwen_data_brief2/eval"
+  },
+
+  "lora": {
+    "base_rank": 256,
+    "base_alpha": 512,
+    "dropout": 0.01,
+    "use_rslora": false,
+    "layer_groups": [
+      {
+        "name": "attention",
+        "modules": ["q_proj", "k_proj", "v_proj", "o_proj","out_proj","in_proj_qkv","in_proj_z"],
+        "rank": null,
+        "alpha": null,
+        "enabled": true
+      }
+    ],
+    "layer_filter": {
+      "start_layer": null,
+      "end_layer": null
+    }
+  },
+
+  "optimizer": {
+    "type": "normuon",
+    "learning_rate": 4e-5,
+    "weight_decay": 0.01
+  },
+
+  "scheduler": {
+    "type": "wwsd",
+    "warmup_steps": 224,
+    "prewarmup_steps": 224,
+    "prewarmup_lr_ratio": 0.1,
+    "stable_steps": 1,
+    "num_cycles": 1,
+    "epoch_shock_absorber": {
+      "enabled": false,
+      "steps_per_epoch": null,
+      "shock_recovery_steps": 100
+    }
+  },
+
+  "training": {
+    "max_grad_norm": 10.0,
+    "label_smoothing": 0.0,
+    "neftune_noise_alpha": 5,
+    "logging_steps": 10,
+    "save_steps": 224,
+    "early_stopping": {
+      "patience": 3,
+      "threshold": 0.0001
+    }
+  },
+
+  "output": {
+    "root_dir": "./results",
+    "prefix": "qwen2b-brief-256-4e-5",
+    "auto_merge": true
+  },
+
+  "checkpoint": {
+    "resume": "auto",
+    "flag_file": "/root/flags/checkpoint_id.txt"
+  }
+}
