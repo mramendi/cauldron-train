@@ -1080,6 +1080,108 @@ def main():
         tokenizer.save_pretrained(merged_output_dir)
         gen_config = GenerationConfig(top_p=0.95, temperature=0.6, do_sample=True)
         gen_config.save_pretrained(str(merged_output_dir))
+
+        # PEFT merge saves the inner text subconfig (e.g. Qwen3_5TextConfig) instead
+        # of the full wrapper config (Qwen3_5Config) that vLLM expects. Re-save the
+        # original base model config to restore the correct config.json.
+        from transformers import AutoConfig, AutoProcessor
+        base_config = AutoConfig.from_pretrained(config["model"]["name"], trust_remote_code=True)
+        base_config.save_pretrained(str(merged_output_dir))
+
+        # Multimodal models (e.g. Qwen3.5) require preprocessor_config.json for vLLM
+        # even when only language layers were trained. Save it if the base model has one.
+        try:
+            processor = AutoProcessor.from_pretrained(config["model"]["name"], trust_remote_code=True)
+            processor.save_pretrained(str(merged_output_dir))
+        except Exception:
+            pass
+
+        # AutoModelForCausalLM only loads the language model portion of the checkpoint.
+        # Components like the visual encoder and MTP head are skipped at load time and
+        # therefore absent from the merged output. Copy any such missing weights from the
+        # base model so vLLM sees a complete checkpoint. If a future transformers version
+        # loads these components automatically, the diff will be empty and we skip cleanly.
+        try:
+            from safetensors import safe_open
+            from safetensors.torch import save_file as _st_save
+            import json as _json
+
+            _base = config["model"]["name"]
+            _midx_path = merged_output_dir / "model.safetensors.index.json"
+            _msf_path = merged_output_dir / "model.safetensors"
+
+            # Locate base model directory without network access
+            _base_dir = None
+            if Path(_base).is_dir():
+                _base_dir = Path(_base)
+            else:
+                try:
+                    from huggingface_hub import snapshot_download as _snap
+                    _base_dir = Path(_snap(_base, local_files_only=True))
+                except Exception:
+                    pass
+
+            if _base_dir is None:
+                print("[Merge] Warning: could not locate base model directory; "
+                      "skipping component copy. Run fix_merged_visual.py manually.")
+            else:
+                # Collect keys already in merged output
+                _merged_keys = set()
+                if _midx_path.exists():
+                    with open(_midx_path) as _f:
+                        _merged_keys = set(_json.load(_f)["weight_map"])
+                elif _msf_path.exists():
+                    with safe_open(str(_msf_path), framework="pt", device="cpu") as _sf:
+                        _merged_keys = set(_sf.keys())
+
+                # Collect keys in base model
+                _base_keys = set()
+                for _sf in sorted(_base_dir.glob("*.safetensors")):
+                    with safe_open(str(_sf), framework="pt", device="cpu") as _f:
+                        _base_keys.update(_f.keys())
+
+                _missing = _base_keys - _merged_keys
+                if not _missing:
+                    print("[Merge] Merged output already contains all base model components")
+                else:
+                    # Load the missing tensors from base
+                    _extra = {}
+                    for _sf in sorted(_base_dir.glob("*.safetensors")):
+                        with safe_open(str(_sf), framework="pt", device="cpu") as _f:
+                            for k in _f.keys():
+                                if k in _missing:
+                                    _extra[k] = _f.get_tensor(k)
+                        if len(_extra) == len(_missing):
+                            break
+
+                    _eshard = "model_extra_components.safetensors"
+                    _st_save(_extra, str(merged_output_dir / _eshard))
+
+                    # Create or update the weight index
+                    if _midx_path.exists():
+                        with open(_midx_path) as _f:
+                            _midx = _json.load(_f)
+                    else:
+                        _midx = {"metadata": {}, "weight_map": {}}
+                        if _msf_path.exists():
+                            with safe_open(str(_msf_path), framework="pt", device="cpu") as _sf2:
+                                for k in _sf2.keys():
+                                    _midx["weight_map"][k] = "model.safetensors"
+                    for k in _extra:
+                        _midx["weight_map"][k] = _eshard
+                    with open(_midx_path, "w") as _f:
+                        _json.dump(_midx, _f)
+
+                    # Summarise by depth-2 prefix
+                    _groups = {}
+                    for k in _extra:
+                        _groups.setdefault(".".join(k.split(".")[:2]), 0)
+                        _groups[".".join(k.split(".")[:2])] += 1
+                    _summary = ", ".join(f"{p}.* ({n})" for p, n in sorted(_groups.items()))
+                    print(f"[Merge] Copied {len(_extra)} tensors from base model: {_summary}")
+        except Exception as _e:
+            print(f"[Merge] Warning: could not copy base model components: {_e}")
+
         print(f"[Merge] Merged model saved to {merged_output_dir}")
 
         if flag_file:

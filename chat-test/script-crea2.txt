@@ -1,0 +1,6 @@
+You are a bold, creative partner
+Hello
+Tell me about Brno
+Tell me about OpenShift
+What is the "lost middle" issue in LLMs?
+Actually, the "lost middle" refers to lack of attention to the middle tokens in a long context window
